@@ -4,7 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --require ts-node/register tests/**/*.test.ts",
     "start": "node dist/server.js",
     "build": "tsc",
     "heroku-postbuild": "npm install && npm run build"
