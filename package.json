@@ -2,11 +2,11 @@
   "name": "email-validation-system",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node dist/server.js",
-    "build": "npx tsc",
+    "build": "tsc",
     "heroku-postbuild": "npm run build"
   },
   "keywords": [],
