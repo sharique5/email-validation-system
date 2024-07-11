@@ -1,4 +1,5 @@
 import dns from 'dns';
+import nodemailer from 'nodemailer';
 import axios from 'axios';
 import { promisify } from 'util';
 import net from 'net';
@@ -60,12 +61,135 @@ export const isDisposableEmail = async (email: string): Promise<boolean> => {
   }
 };
 
+export const checkCatchAll = async (domain: string): Promise<boolean> => {
+  try {
+    // Resolve MX records for the domain
+    const mxRecords = await new Promise<dns.MxRecord[]>((resolve, reject) => {
+      dns.resolveMx(domain, (err, addresses) => {
+        if (err) reject(err);
+        else resolve(addresses);
+      });
+    });
+
+    if (mxRecords.length === 0) {
+      console.log('No MX records found for domain');
+      return false;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: mxRecords[0].exchange,
+      port: 25,
+      secure: false,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    const invalidEmail = `invalid-${Date.now()}@${domain}`;
+
+    return new Promise<boolean>((resolve, reject) => {
+      transporter.verify((error: any, success: any) => {
+        if (error) {
+          reject('Error verifying SMTP connection: ' + error.message);
+        } else {
+          transporter.sendMail(
+            {
+              from: 'test@example.com',
+              to: invalidEmail,
+              subject: 'Test Email',
+              text: 'This is a test email.',
+            },
+            (err: any, info: any) => {
+              transporter.close();
+              if (err) {
+                if (err.responseCode >= 400 && err.responseCode < 500) {
+                  resolve(false); // Not a catch-all
+                } else {
+                  reject('SMTP error: ' + err.message);
+                }
+              } else {
+                resolve(true); // Catch-all
+              }
+            }
+          );
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    return false;
+  }
+}
+
+export const checkTemporaryBlock = async (email: string): Promise<boolean> => {
+  const domain = email.split('@')[1];
+
+  try {
+    // Resolve MX records for the domain
+    const mxRecords = await new Promise<dns.MxRecord[]>((resolve, reject) => {
+      dns.resolveMx(domain, (err, addresses) => {
+        if (err) reject(err);
+        else resolve(addresses);
+      });
+    });
+
+    if (mxRecords.length === 0) {
+      console.log('No MX records found for domain');
+      return false;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: mxRecords[0].exchange,
+      port: 25,
+      secure: false,
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    return new Promise<boolean>((resolve, reject) => {
+      transporter.verify((error: any, success: any) => {
+        if (error) {
+          reject('Error verifying SMTP connection: ' + error.message);
+        } else {
+          transporter.sendMail(
+            {
+              from: 'test@example.com',
+              to: email,
+              subject: 'Test Email',
+              text: 'This is a test email.',
+            },
+            (err: any, info: any) => {
+              transporter.close();
+              if (err) {
+                if (err.responseCode >= 400 && err.responseCode < 500) {
+                  resolve(true); // Temporary block detected
+                } else {
+                  reject('SMTP error: ' + err.message);
+                }
+              } else {
+                resolve(false); // No temporary block
+              }
+            }
+          );
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    return false;
+  }
+}
+
+
 export const verifyEmail = async (email: string) => {
   const isValidSyntax = validateEmailSyntax(email);
   const isDomainValid = verifyDomain(email);
   const hasMxRecords = await validateMxRecords(email);
   const isSmtpValid = await smtpCheck(email);
   const isDisposable = await isDisposableEmail(email);
+  const isCheckAll = await checkCatchAll(email);
+  const isTemporaryBlocked = await checkTemporaryBlock(email);
 
   return {
     email,
@@ -74,5 +198,7 @@ export const verifyEmail = async (email: string) => {
     hasMxRecords,
     isSmtpValid,
     isDisposable,
+    isCheckAll,
+    isTemporaryBlocked
   };
 };
